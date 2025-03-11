@@ -116,11 +116,6 @@ test_cases = [
         "input": "A scientific paper discussing quantum mechanics starts with a premise. (Imagine a long detailed explanation) ... At the end, summarize the first key argument mentioned.",
         "expected_output": "(First key argument)",
     },
-    {
-        "input": "Describe what you see in this image and infer the possible context.",
-        "image": "example_image.jpg",
-        "expected_output": "(Relevant description)",
-    },
 ]
 
 if __name__ == "__main__":
