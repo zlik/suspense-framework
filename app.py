@@ -6,6 +6,7 @@ from flask import Flask, redirect, render_template_string, request, session, url
 from groq import Groq
 from llama_stack_client import LlamaStackClient
 from llama_stack_client.types import CompletionMessage, UserMessage
+from openai import OpenAI
 
 
 # Load API keys from .env file
@@ -14,23 +15,29 @@ load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 LLAMA_STACK_API_KEY = os.getenv("LLAMA_STACK_API_KEY")
 LLAMA_STACK_BASE_URL = os.getenv("LLAMA_STACK_BASE_URL")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
 
 # Ensure API keys are set
 if not GROQ_API_KEY:
     raise ValueError("Missing GROQ_API_KEY in .env file.")
 if not LLAMA_STACK_API_KEY or not LLAMA_STACK_BASE_URL:
     raise ValueError("Missing Llama Stack API configuration in .env file.")
+if not OPENAI_API_KEY or not OPENAI_BASE_URL:
+    raise ValueError("Missing OpenAI API configuration in .env file.")
 
 app = Flask(__name__)
 app.secret_key = "session_random_key"
 app_model_ollama = "llama3"
 app_model_groq = "llama3-8b-8192"
 app_model_llama_stack = "llama3.3-70b-instruct"
+app_model_openai = app_model_llama_stack
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 llama_stack_client = LlamaStackClient(
     base_url=LLAMA_STACK_BASE_URL, api_key=LLAMA_STACK_API_KEY
 )
+openai_client = OpenAI(base_url=OPENAI_BASE_URL, api_key=OPENAI_API_KEY)
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -61,6 +68,8 @@ HTML_TEMPLATE = """
             <a href="https://groq.com">Groq</a> ({{ app_model_groq }})
         {% elif session.get('provider') == 'llama_stack' %}
             <a href="https://llamastack.com">Llama Stack</a> ({{ app_model_llama_stack }})
+        {% elif session.get('provider') == 'openai' %}
+            <a href="https://openai.com">OpenAI</a> ({{ app_model_openai }})
         {% else %}
             <a href="https://github.com/ollama/ollama">Ollama</a> ({{ app_model_ollama }})
         {% endif %}
@@ -71,6 +80,7 @@ HTML_TEMPLATE = """
             <option value="groq" {% if session.get('provider', 'groq') == 'groq' %}selected{% endif %}>Groq</option>
             <option value="ollama" {% if session.get('provider') == 'ollama' %}selected{% endif %}>Ollama</option>
             <option value="llama_stack" {% if session.get('provider') == 'llama_stack' %}selected{% endif %}>Llama Stack</option>
+            <option value="openai" {% if session.get('provider') == 'openai' %}selected{% endif %}>OpenAI</option>
         </select>
     </form>
     
@@ -137,12 +147,7 @@ def index():
 
             elif provider == "ollama":
                 context = session.get(context_key)
-
-                debug_info += f"Calling Ollama API: ollama.generate with parameters:\n"
-                debug_info += f"  Model: {app_model_ollama}\n"
-                debug_info += f"  Prompt: {prompt}\n"
-                debug_info += f"  Context: {context}\n"
-
+                debug_info += "Calling Ollama API\n"
                 result = ollama.generate(
                     model=app_model_ollama, prompt=prompt, context=context
                 )
@@ -163,15 +168,31 @@ def index():
                     messages=context,
                     model_id=app_model_llama_stack,
                 )
-
                 response_text = llama_response.completion_message.content.text
                 assistant_message = {
-                    "role": "assistant",  # was user
+                    "role": "assistant",
                     "content": response_text,
                     "stop_reason": llama_response.completion_message.stop_reason,
                 }
-                response = llama_response.completion_message.content.text
+                response = response_text
                 context.append(assistant_message)
+                session[context_key] = context
+
+            elif provider == "openai":
+                context = session.get(context_key, [])
+                context.append({"role": "user", "content": prompt})
+
+                debug_info += f"Calling OpenAI API: openai_client.chat.completions.create with parameters:\n"
+                debug_info += f"  Model: {app_model_openai}\n"
+                debug_info += f"  Prompt: {prompt}\n"
+                debug_info += f"  Context: {context}\n"
+
+                completion = openai_client.chat.completions.create(
+                    model=app_model_openai,
+                    messages=context,
+                )
+                response = completion.choices[0].message.content
+                context.append({"role": "assistant", "content": response})
                 session[context_key] = context
 
             session.setdefault(conversation_key, []).append(
@@ -187,6 +208,7 @@ def index():
         app_model_ollama=app_model_ollama,
         app_model_groq=app_model_groq,
         app_model_llama_stack=app_model_llama_stack,
+        app_model_openai=app_model_openai,
     )
 
 
