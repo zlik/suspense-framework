@@ -7,7 +7,7 @@ from groq import Groq
 from llama_stack_client import LlamaStackClient
 from llama_stack_client.types import CompletionMessage, UserMessage
 from openai import OpenAI
-
+from rag import add_document, retrieve_context
 
 # Load API keys from .env file
 load_dotenv()
@@ -129,9 +129,17 @@ def index():
 
         prompt = request.form.get("prompt")
         if prompt:
+            # Retrieve relevant documents for RAG
+            retrieved_context, rag_debug_info = retrieve_context(prompt)
+
+            # Combine retrieved context with user input
+            enhanced_prompt = f"Context:\n{retrieved_context}\n\nUser Prompt: {prompt}"
+            debug_info += f"[INFO] Final prompt sent to LLM:\n{enhanced_prompt}\n"
+            debug_info += f"[INFO] RAG Processing Details:\n{rag_debug_info}\n"
+
             if provider == "groq":
                 context = session.get(context_key, [])
-                context.append({"role": "user", "content": prompt})
+                context.append({"role": "user", "content": enhanced_prompt})
 
                 debug_info += f"Calling Groq API: groq_client.chat.completions.create with parameters:\n"
                 debug_info += f"  Model: {app_model_groq}\n"
@@ -149,19 +157,19 @@ def index():
                 context = session.get(context_key)
                 debug_info += "Calling Ollama API\n"
                 result = ollama.generate(
-                    model=app_model_ollama, prompt=prompt, context=context
+                    model=app_model_ollama, prompt=enhanced_prompt, context=context
                 )
                 response = result["response"]
                 session[context_key] = result.get("context")
 
             elif provider == "llama_stack":
                 context = session.get(context_key, [])
-                user_message = {"role": "user", "content": prompt}
+                user_message = {"role": "user", "content": enhanced_prompt}
                 context.append(user_message)
 
                 debug_info += f"Calling Llama API: llama_stack_client.inference.chat_completion with parameters:\n"
                 debug_info += f"  Model: {app_model_llama_stack}\n"
-                debug_info += f"  Prompt: {prompt}\n"
+                debug_info += f"  Prompt: {enhanced_prompt}\n"
                 debug_info += f"  Context: {context}\n"
 
                 llama_response = llama_stack_client.inference.chat_completion(
@@ -180,11 +188,11 @@ def index():
 
             elif provider == "openai":
                 context = session.get(context_key, [])
-                context.append({"role": "user", "content": prompt})
+                context.append({"role": "user", "content": enhanced_prompt})
 
                 debug_info += f"Calling OpenAI API: openai_client.chat.completions.create with parameters:\n"
                 debug_info += f"  Model: {app_model_openai}\n"
-                debug_info += f"  Prompt: {prompt}\n"
+                debug_info += f"  Prompt: {enhanced_prompt}\n"
                 debug_info += f"  Context: {context}\n"
 
                 completion = openai_client.chat.completions.create(
@@ -196,7 +204,7 @@ def index():
                 session[context_key] = context
 
             session.setdefault(conversation_key, []).append(
-                {"prompt": prompt, "response": response, "provider": provider}
+                {"prompt": enhanced_prompt, "response": response, "provider": provider}
             )
             session["debug_info"] = debug_info
 
