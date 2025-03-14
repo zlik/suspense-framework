@@ -1,12 +1,36 @@
+import os
+
 import ollama
+from dotenv import load_dotenv
 from flask import Flask, redirect, render_template_string, request, session, url_for
 from groq import Groq
+from llama_stack_client import LlamaStackClient
+from llama_stack_client.types import CompletionMessage, UserMessage
+
+
+# Load API keys from .env file
+load_dotenv()
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+LLAMA_STACK_API_KEY = os.getenv("LLAMA_STACK_API_KEY")
+LLAMA_STACK_BASE_URL = os.getenv("LLAMA_STACK_BASE_URL")
+
+# Ensure API keys are set
+if not GROQ_API_KEY:
+    raise ValueError("Missing GROQ_API_KEY in .env file.")
+if not LLAMA_STACK_API_KEY or not LLAMA_STACK_BASE_URL:
+    raise ValueError("Missing Llama Stack API configuration in .env file.")
 
 app = Flask(__name__)
 app.secret_key = "session_random_key"
 app_model_ollama = "llama3"
 app_model_groq = "llama3-8b-8192"
-groq_client = Groq(api_key="<USE_YOUR_GROQ_KEY_HERE>")
+app_model_llama_stack = "llama3.3-70b-instruct"
+
+groq_client = Groq(api_key=GROQ_API_KEY)
+llama_stack_client = LlamaStackClient(
+    base_url=LLAMA_STACK_BASE_URL, api_key=LLAMA_STACK_API_KEY
+)
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -35,6 +59,8 @@ HTML_TEMPLATE = """
         Powered by
         {% if session.get('provider') == 'groq' %}
             <a href="https://groq.com">Groq</a> ({{ app_model_groq }})
+        {% elif session.get('provider') == 'llama_stack' %}
+            <a href="https://llamastack.com">Llama Stack</a> ({{ app_model_llama_stack }})
         {% else %}
             <a href="https://github.com/ollama/ollama">Ollama</a> ({{ app_model_ollama }})
         {% endif %}
@@ -44,6 +70,7 @@ HTML_TEMPLATE = """
         <select name="provider" onchange="changeProvider()">
             <option value="groq" {% if session.get('provider', 'groq') == 'groq' %}selected{% endif %}>Groq</option>
             <option value="ollama" {% if session.get('provider') == 'ollama' %}selected{% endif %}>Ollama</option>
+            <option value="llama_stack" {% if session.get('provider') == 'llama_stack' %}selected{% endif %}>Llama Stack</option>
         </select>
     </form>
     
@@ -78,6 +105,7 @@ def index():
     conversation_key = f"{provider}_conversation"
     context_key = f"{provider}_context"
     debug_info = ""
+    response = ""
 
     if conversation_key not in session:
         session[conversation_key] = []
@@ -106,8 +134,10 @@ def index():
                 response = groq_response.choices[0].message.content
                 context.append({"role": "assistant", "content": response})
                 session[context_key] = context
-            else:
+
+            elif provider == "ollama":
                 context = session.get(context_key)
+
                 debug_info += f"Calling Ollama API: ollama.generate with parameters:\n"
                 debug_info += f"  Model: {app_model_ollama}\n"
                 debug_info += f"  Prompt: {prompt}\n"
@@ -119,6 +149,31 @@ def index():
                 response = result["response"]
                 session[context_key] = result.get("context")
 
+            elif provider == "llama_stack":
+                context = session.get(context_key, [])
+                user_message = {"role": "user", "content": prompt}
+                context.append(user_message)
+
+                debug_info += f"Calling Llama API: llama_stack_client.inference.chat_completion with parameters:\n"
+                debug_info += f"  Model: {app_model_llama_stack}\n"
+                debug_info += f"  Prompt: {prompt}\n"
+                debug_info += f"  Context: {context}\n"
+
+                llama_response = llama_stack_client.inference.chat_completion(
+                    messages=context,
+                    model_id=app_model_llama_stack,
+                )
+
+                response_text = llama_response.completion_message.content.text
+                assistant_message = {
+                    "role": "assistant",  # was user
+                    "content": response_text,
+                    "stop_reason": llama_response.completion_message.stop_reason,
+                }
+                response = llama_response.completion_message.content.text
+                context.append(assistant_message)
+                session[context_key] = context
+
             session.setdefault(conversation_key, []).append(
                 {"prompt": prompt, "response": response, "provider": provider}
             )
@@ -128,7 +183,10 @@ def index():
         session.pop("debug_info", None)  # Clear debug info when page is refreshed
 
     return render_template_string(
-        HTML_TEMPLATE, app_model_ollama=app_model_ollama, app_model_groq=app_model_groq
+        HTML_TEMPLATE,
+        app_model_ollama=app_model_ollama,
+        app_model_groq=app_model_groq,
+        app_model_llama_stack=app_model_llama_stack,
     )
 
 
