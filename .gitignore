@@ -2,3 +2,4 @@
 .idea
 .ipynb_checkpoints
 hagakure/faiss_index.pkl
+hagakure/__pycache__
