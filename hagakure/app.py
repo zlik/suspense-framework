@@ -61,7 +61,7 @@ HTML_TEMPLATE = """
     </script>
 </head>
 <body>
-    <h2>GenAI Inference Sample App</h2>
+    <h2>Hagakure: A GenAI Inference Sample App</h2>
     <p>
         Powered by
         {% if session.get('provider') == 'groq' %}
