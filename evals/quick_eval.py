@@ -1,10 +1,17 @@
 import os
-
 from dotenv import load_dotenv
 from groq import Groq
 from config import getenv
+from llama_stack_client import LlamaStackClient
+from tabulate import tabulate
+from colorama import Fore, Style
 
 GROQ_API_KEY = getenv("GROQ_API_KEY")
+LLAMA_API_KEY = getenv("LLAMA_API_KEY")
+LLAMA_API_BASE_URL = getenv("LLAMA_API_BASE_URL")
+
+# Initialize Llama client
+llama_client = LlamaStackClient(base_url=LLAMA_API_BASE_URL, api_key=LLAMA_API_KEY)
 
 
 def simple_evaluator(response, expected):
@@ -16,25 +23,23 @@ def simple_evaluator(response, expected):
     )
 
 
-def query_groq_api(prompt):
-    """Function to query the Groq API with LLaMA 3 8B model using the Groq client."""
-    client = Groq(api_key=GROQ_API_KEY)
-    response = client.chat.completions.create(
-        model="llama3-8b-8192",
+def query_llama_api(prompt, model="llama3.3-70b-llama_api"):
+    """Function to query the Llama API with a specified model."""
+    response = llama_client.inference.chat_completion(
+        model_id=model,
         messages=[
-            {"role": "system", "content": "You are a helpful AI."},
             {"role": "user", "content": prompt},
         ],
-        max_tokens=100,
     )
-    return (
-        response.choices[0].message.content
-        if response.choices
-        else "Error: API request failed"
-    )
+    return response.completion_message.content.text if response else "Error: API request failed"
 
 
-def run_eval():
+def query_model_api(prompt, model=None):
+    """Unified function to query Llama API with different models."""
+    return query_llama_api(prompt, model=model)
+
+
+def run_eval(models):
     # Define evaluation scenarios
     scenarios = [
         {"question": "What is the capital of France?", "expected": "Paris"},
@@ -48,30 +53,39 @@ def run_eval():
     eval_results = []
 
     for scenario in scenarios:
-        response = query_groq_api(scenario["question"])
-
-        # Evaluate response
-        score = simple_evaluator(response, scenario["expected"])
+        model_responses = {}
+        for model in models:
+            response = query_model_api(scenario["question"], model=model)
+            score = simple_evaluator(response, scenario["expected"])
+            model_responses[model] = {"response": response[:50] + "...", "score": score}  # Truncate response
 
         eval_results.append(
             {
-                "model": "llama3-8b-8192",
                 "question": scenario["question"],
-                "response": response,
                 "expected": scenario["expected"],
-                "score": score,
+                "models": model_responses,
             }
         )
 
-    # Display results
+    # Display results in a compact tabulated format
+    table_data = []
+    headers = ["Question", "Expected"] + list(models)
     for result in eval_results:
-        print(f"Model: {result['model']}")
-        print(f"Question: {result['question']}")
-        print(f"Response: {result['response']}")
-        print(f"Expected: {result['expected']}")
-        print(f"Score: {result['score']:.2f}")
-        print("-" * 50)
+        row = [
+            Fore.CYAN + result["question"][:25] + "..." + Style.RESET_ALL,  # Shorten questions
+            Fore.GREEN + result["expected"][:25] + "..." + Style.RESET_ALL,  # Shorten expected answers
+        ]
+        for model in models:
+            response = result["models"].get(model, {}).get("response", "N/A")
+            score = result["models"].get(model, {}).get("score", 0)
+            row.append(Fore.YELLOW + response + Style.RESET_ALL + f" ({score:.2f})")
+        table_data.append(row)
 
+    print(tabulate(table_data, headers =headers, tablefmt="plain"))  # Use 'plain' format for compact output
 
 if __name__ == "__main__":
-    run_eval()
+    models_to_compare = {
+        "llama3.3-8b-llama_api",
+        "llama3.3-70b-llama_api",
+    }
+    run_eval(models=models_to_compare)
