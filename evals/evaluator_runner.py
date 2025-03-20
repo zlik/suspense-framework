@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from questions.evaluation_questions import evaluation_scenarios
+from datasets.evaluation_questions import evaluation_scenarios
 from evaluator import simple_evaluator
 from inference.llama_api_client import query_llama_api
 
