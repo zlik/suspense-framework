@@ -2,10 +2,9 @@ import os
 
 from dotenv import load_dotenv
 from groq import Groq
+from config import getenv
 
-# Load environment variables from .env file
-load_dotenv()
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_API_KEY = getenv("GROQ_API_KEY")
 
 
 def simple_evaluator(response, expected):

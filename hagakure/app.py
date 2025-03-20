@@ -1,5 +1,3 @@
-import os
-
 import ollama
 from dotenv import load_dotenv
 from flask import Flask, redirect, render_template_string, request, session, url_for
@@ -8,19 +6,13 @@ from llama_stack_client import LlamaStackClient
 from llama_stack_client.types import CompletionMessage, UserMessage
 from openai import OpenAI
 from rag import add_document, retrieve_context
+from config import getenv
 
-# Get the absolute path of the project directory
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_DIR = os.path.dirname(BASE_DIR)
-
-# Load API keys from .env file
-load_dotenv(os.path.join(PROJECT_DIR, ".env"))
-
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-LLAMA_STACK_API_KEY = os.getenv("LLAMA_STACK_API_KEY")
-LLAMA_STACK_BASE_URL = os.getenv("LLAMA_STACK_BASE_URL")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
+GROQ_API_KEY = getenv("GROQ_API_KEY")
+LLAMA_STACK_API_KEY = getenv("LLAMA_STACK_API_KEY")
+LLAMA_STACK_BASE_URL = getenv("LLAMA_STACK_BASE_URL")
+OPENAI_API_KEY = getenv("OPENAI_API_KEY")
+OPENAI_BASE_URL = getenv("OPENAI_BASE_URL")
 
 # Ensure API keys are set
 if not GROQ_API_KEY:
