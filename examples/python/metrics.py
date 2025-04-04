@@ -17,24 +17,36 @@ def measure_metrics(prompts, model):
     results = []
 
     for prompt in prompts:
-        start = time.time()
-        completion = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        end = time.time()
+        start_time = time.time()
+        first_token_time = None
+        full_response = ""
 
-        response = completion.choices[0].message.content
-        total_time = end - start
-        token_count = completion.usage.total_tokens
-        tps = token_count / total_time if total_time > 0 else 0
+        # Use streaming to capture TTFT
+        for chunk in client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            stream=True
+        ):
+            if not first_token_time:
+                first_token_time = time.time()
+            delta = chunk.choices[0].delta
+            content = delta.content if delta and delta.content else ""
+            full_response += content
+
+        end_time = time.time()
+
+        ttft = round(first_token_time - start_time, 3) if first_token_time else None
+        total_time = round(end_time - start_time, 3)
+        token_count = len(full_response.split())  # Rough estimate, or use tokenizer if needed
+        tps = round(token_count / total_time, 2) if total_time > 0 else 0
 
         results.append({
             "prompt": prompt,
-            "response": response,
-            "total_response_time": round(total_time, 3),
+            "response": full_response,
+            "ttft": ttft,
+            "total_response_time": total_time,
             "tokens": token_count,
-            "tps": round(tps, 2),
+            "tps": tps,
         })
 
     return results
